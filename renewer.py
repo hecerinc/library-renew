@@ -14,7 +14,7 @@ login_url = "https://millenium.itesm.mx/patroninfo*spi"
 
 if pin == None:
     print("No PIN found in environment vars. Please set _RENEWER_PIN")
-    raise SystemExit 
+    raise ValueError 
 
 
 # Login first to get the cookies
@@ -34,14 +34,14 @@ def main():
         cookie_jar = r1.cookies
     else:
         print("Login request failed", file=sys.stderr)
-        raise SystemExit
+        raise ValueError 
 
 
     # Get renewables
     r2 = requests.get(url, cookies=cookie_jar)
     if r2.status_code != 200:
         print("{}\tFailed to get list of items".format(datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc,microsecond=0).isoformat()), file=sys.stderr)
-        raise SystemExit
+        raise ValueError
 
     soup = BeautifulSoup(r2.text, 'html.parser')
     # Find all .patFuncEntry
@@ -63,7 +63,7 @@ def main():
         renew_val = mark[0].contents[0]['value']
         renew_list.append({renew_key: renew_val})
     if len(renew_list) != 0:
-        renew(renew_list)
+        renew(renew_list, cookie_jar)
 
 def sendemail(from_addr, to_addr_list, cc_addr_list, subject, message, login, password, smtpserver='smtp.gmail.com:587'):
     header  = 'From: {}\r\n'.format(from_addr)
@@ -83,18 +83,19 @@ def sendErrorMessage(errorlist):
     password = os.environ.get('_RENEWER_PASS')
     if email == None or password == None:
         print("{}\tMAILER: Email username or password not found in environment".format(datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc,microsecond=0).isoformat()), file=sys.stderr)
-        raise SystemExit
+        raise ValueError
     msg = "<h1>Error renewing books</h1><br /> <br /> <p>Some books failed to renew with the following errors: <br /> <br /> {} </p>".format('<br>'.join([x.string for x in errorlist]))
     sendemail("hecerinc@gmail.com", ["hecerinc@outlook.com"], None, 'Library renewer message', msg, email, password)
 
-def renew(renew_list):
+def renew(renew_list, cookie_jar):
     data = {'currentsortorder': 'current_checkout', 'renewsome': 'SI'}
-    data = {**data, **renew_list}
+    rlist = {k: v for d in renew_list for k, v in d.items()} 
+    data = {**data, **rlist}
     res = requests.post(url, data=data, cookies=cookie_jar)
     # Check if renew was successfull
     if res.status_code != 200:
         print("{}\tRenew failed with statuscode != 200".format(datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc,microsecond=0).isoformat()), file=sys.stderr)
-        raise SystemExit
+        raise ValueError
 
     soup2 = BeautifulSoup(res.text, 'html.parser')
     errormsg = soup2.find("#renewfailmsg") 
